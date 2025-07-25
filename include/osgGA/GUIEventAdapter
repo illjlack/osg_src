@@ -1,0 +1,759 @@
+/* -*-c++-*- OpenSceneGraph - Copyright (C) 1998-2006 Robert Osfield
+ *
+ * This library is open source and may be redistributed and/or modified under
+ * the terms of the OpenSceneGraph Public License (OSGPL) version 0.0 or
+ * (at your option) any later version.  The full license is in LICENSE file
+ * included with this distribution, and on the openscenegraph.org website.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * OpenSceneGraph Public License for more details.
+*/
+
+#ifndef OSGGA_GUIEVENTADAPTER
+#define OSGGA_GUIEVENTADAPTER 1
+
+#include <osg/Object>
+#include <osg/Matrix>
+#include <osg/GraphicsContext>
+
+#include <osgGA/Event>
+
+namespace osgGA{
+
+/** 指针数据结构，用于存储指针（鼠标/触摸）的位置信息 */
+struct PointerData : public osg::Referenced
+{
+    PointerData():
+        object(0),
+        x(0.0f),
+        xMin(-1.0f),
+        xMax(1.0f),
+        y(0.0f),
+        yMin(-1.0f),
+        yMax(1.0f) {}
+
+    PointerData(osg::Object* obj, float in_x, float in_xMin, float in_xMax, float in_y, float in_yMin, float in_yMax):
+        object(obj),
+        x(in_x),
+        xMin(in_xMin),
+        xMax(in_xMax),
+        y(in_y),
+        yMin(in_yMin),
+        yMax(in_yMax) {}
+
+    PointerData(const PointerData& pd):
+        osg::Referenced(),
+        object(pd.object),
+        x(pd.x),
+        xMin(pd.xMin),
+        xMax(pd.xMax),
+        y(pd.y),
+        yMin(pd.yMin),
+        yMax(pd.yMax) {}
+
+    PointerData& operator = (const PointerData& pd)
+    {
+        if (&pd==this) return *this;
+
+        object = pd.object;
+        x = pd.x;
+        xMin = pd.xMin;
+        xMax = pd.xMax;
+        y = pd.y;
+        yMin = pd.yMin;
+        yMax = pd.yMax;
+
+        return *this;
+    }
+
+    osg::observer_ptr<osg::Object> object;  // 关联的对象
+    float x, xMin, xMax;  // X坐标及其范围
+    float y, yMin, yMax;  // Y坐标及其范围
+
+    /** 获取标准化的X坐标（-1到1范围） */
+    float getXnormalized() const { return (x-xMin)/(xMax-xMin)*2.0f-1.0f; }
+    /** 获取标准化的Y坐标（-1到1范围） */
+    float getYnormalized() const { return (y-yMin)/(yMax-yMin)*2.0f-1.0f; }
+};
+
+
+/** GUI事件适配器类，用于存储键盘、鼠标和窗口事件 */
+class OSGGA_EXPORT GUIEventAdapter : public Event
+{
+public:
+
+        /** 鼠标按钮掩码枚举 */
+        enum MouseButtonMask {
+            LEFT_MOUSE_BUTTON    = 1<<0,   // 左鼠标按钮
+            MIDDLE_MOUSE_BUTTON  = 1<<1,   // 中鼠标按钮
+            RIGHT_MOUSE_BUTTON   = 1<<2    // 右鼠标按钮
+        };
+
+        /** 事件类型枚举 */
+        enum EventType {
+            NONE                = 0,       // 无事件
+            PUSH                = 1<<0,    // 按下事件
+            RELEASE             = 1<<1,    // 释放事件
+            DOUBLECLICK         = 1<<2,    // 双击事件
+            DRAG                = 1<<3,    // 拖拽事件
+            MOVE                = 1<<4,    // 移动事件
+            KEYDOWN             = 1<<5,    // 按键按下
+            KEYUP               = 1<<6,    // 按键释放
+            FRAME               = 1<<7,    // 帧事件
+            RESIZE              = 1<<8,    // 窗口大小改变
+            SCROLL              = 1<<9,    // 滚动事件
+            PEN_PRESSURE        = 1<<10,   // 笔压力事件
+            PEN_ORIENTATION     = 1<<11,   // 笔方向事件
+            PEN_PROXIMITY_ENTER = 1<<12,   // 笔接近进入
+            PEN_PROXIMITY_LEAVE = 1<<13,   // 笔接近离开
+            CLOSE_WINDOW        = 1<<14,   // 关闭窗口
+            QUIT_APPLICATION    = 1<<15,   // 退出应用程序
+            USER                = 1<<16    // 用户自定义事件
+        };
+
+        /** 键盘符号枚举 - 定义各种按键的键码 */
+        enum KeySymbol
+        {
+            KEY_Space           = 0x20,    // 空格键
+
+            // 数字键
+            KEY_0               = '0',
+            KEY_1               = '1',
+            KEY_2               = '2',
+            KEY_3               = '3',
+            KEY_4               = '4',
+            KEY_5               = '5',
+            KEY_6               = '6',
+            KEY_7               = '7',
+            KEY_8               = '8',
+            KEY_9               = '9',
+            
+            // 字母键
+            KEY_A               = 'a',
+            KEY_B               = 'b',
+            KEY_C               = 'c',
+            KEY_D               = 'd',
+            KEY_E               = 'e',
+            KEY_F               = 'f',
+            KEY_G               = 'g',
+            KEY_H               = 'h',
+            KEY_I               = 'i',
+            KEY_J               = 'j',
+            KEY_K               = 'k',
+            KEY_L               = 'l',
+            KEY_M               = 'm',
+            KEY_N               = 'n',
+            KEY_O               = 'o',
+            KEY_P               = 'p',
+            KEY_Q               = 'q',
+            KEY_R               = 'r',
+            KEY_S               = 's',
+            KEY_T               = 't',
+            KEY_U               = 'u',
+            KEY_V               = 'v',
+            KEY_W               = 'w',
+            KEY_X               = 'x',
+            KEY_Y               = 'y',
+            KEY_Z               = 'z',
+
+            // 标点符号键
+            KEY_Exclaim         = 0x21,    // !
+            KEY_Quotedbl        = 0x22,    // "
+            KEY_Hash            = 0x23,    // #
+            KEY_Dollar          = 0x24,    // $
+            KEY_Ampersand       = 0x26,    // &
+            KEY_Quote           = 0x27,    // '
+            KEY_Leftparen       = 0x28,    // (
+            KEY_Rightparen      = 0x29,    // )
+            KEY_Asterisk        = 0x2A,    // *
+            KEY_Plus            = 0x2B,    // +
+            KEY_Comma           = 0x2C,    // ,
+            KEY_Minus           = 0x2D,    // -
+            KEY_Period          = 0x2E,    // .
+            KEY_Slash           = 0x2F,    // /
+            KEY_Colon           = 0x3A,    // :
+            KEY_Semicolon       = 0x3B,    // ;
+            KEY_Less            = 0x3C,    // <
+            KEY_Equals          = 0x3D,    // =
+            KEY_Greater         = 0x3E,    // >
+            KEY_Question        = 0x3F,    // ?
+            KEY_At              = 0x40,    // @
+            KEY_Leftbracket     = 0x5B,    // [
+            KEY_Backslash       = 0x5C,    // \
+            KEY_Rightbracket    = 0x5D,    // ]
+            KEY_Caret           = 0x5E,    // ^
+            KEY_Underscore      = 0x5F,    // _
+            KEY_Backquote       = 0x60,    // `
+
+            // 控制键
+            KEY_BackSpace       = 0xFF08,  // 退格键
+            KEY_Tab             = 0xFF09,  // Tab键
+            KEY_Linefeed        = 0xFF0A,  // 换行键
+            KEY_Clear           = 0xFF0B,  // 清除键
+            KEY_Return          = 0xFF0D,  // 回车键
+            KEY_Pause           = 0xFF13,  // 暂停键
+            KEY_Scroll_Lock     = 0xFF14,  // 滚动锁定
+            KEY_Sys_Req         = 0xFF15,  // 系统请求
+            KEY_Escape          = 0xFF1B,  // 退出键
+            KEY_Delete          = 0xFFFF,  // 删除键
+
+            // 光标控制和移动键
+            KEY_Home            = 0xFF50,  // Home键
+            KEY_Left            = 0xFF51,  // 左箭头
+            KEY_Up              = 0xFF52,  // 上箭头
+            KEY_Right           = 0xFF53,  // 右箭头
+            KEY_Down            = 0xFF54,  // 下箭头
+            KEY_Prior           = 0xFF55,  // Page Up
+            KEY_Page_Up         = 0xFF55,  // Page Up
+            KEY_Next            = 0xFF56,  // Page Down
+            KEY_Page_Down       = 0xFF56,  // Page Down
+            KEY_End             = 0xFF57,  // End键
+            KEY_Begin           = 0xFF58,  // Begin键
+
+            // 功能键
+            KEY_Select          = 0xFF60,  // 选择键
+            KEY_Print           = 0xFF61,  // 打印键
+            KEY_Execute         = 0xFF62,  // 执行键
+            KEY_Insert          = 0xFF63,  // 插入键
+            KEY_Undo            = 0xFF65,  // 撤销键
+            KEY_Redo            = 0xFF66,  // 重做键
+            KEY_Menu            = 0xFF67,  // 菜单键
+            KEY_Find            = 0xFF68,  // 查找键
+            KEY_Cancel          = 0xFF69,  // 取消键
+            KEY_Help            = 0xFF6A,  // 帮助键
+            KEY_Break           = 0xFF6B,  // Break键
+            KEY_Mode_switch     = 0xFF7E,  // 模式切换
+            KEY_Script_switch   = 0xFF7E,  // 脚本切换
+            KEY_Num_Lock        = 0xFF7F,  // 数字锁定
+
+            // 小键盘功能键
+            KEY_KP_Space        = 0xFF80,  // 小键盘空格
+            KEY_KP_Tab          = 0xFF89,  // 小键盘Tab
+            KEY_KP_Enter        = 0xFF8D,  // 小键盘回车
+            KEY_KP_F1           = 0xFF91,  // 小键盘F1
+            KEY_KP_F2           = 0xFF92,  // 小键盘F2
+            KEY_KP_F3           = 0xFF93,  // 小键盘F3
+            KEY_KP_F4           = 0xFF94,  // 小键盘F4
+            KEY_KP_Home         = 0xFF95,  // 小键盘Home
+            KEY_KP_Left         = 0xFF96,  // 小键盘左箭头
+            KEY_KP_Up           = 0xFF97,  // 小键盘上箭头
+            KEY_KP_Right        = 0xFF98,  // 小键盘右箭头
+            KEY_KP_Down         = 0xFF99,  // 小键盘下箭头
+            KEY_KP_Prior        = 0xFF9A,  // 小键盘Page Up
+            KEY_KP_Page_Up      = 0xFF9A,  // 小键盘Page Up
+            KEY_KP_Next         = 0xFF9B,  // 小键盘Page Down
+            KEY_KP_Page_Down    = 0xFF9B,  // 小键盘Page Down
+            KEY_KP_End          = 0xFF9C,  // 小键盘End
+            KEY_KP_Begin        = 0xFF9D,  // 小键盘Begin
+            KEY_KP_Insert       = 0xFF9E,  // 小键盘插入
+            KEY_KP_Delete       = 0xFF9F,  // 小键盘删除
+            KEY_KP_Equal        = 0xFFBD,  // 小键盘等号
+            KEY_KP_Multiply     = 0xFFAA,  // 小键盘乘号
+            KEY_KP_Add          = 0xFFAB,  // 小键盘加号
+            KEY_KP_Separator    = 0xFFAC,  // 小键盘分隔符
+            KEY_KP_Subtract     = 0xFFAD,  // 小键盘减号
+            KEY_KP_Decimal      = 0xFFAE,  // 小键盘小数点
+            KEY_KP_Divide       = 0xFFAF,  // 小键盘除号
+
+            // 小键盘数字键
+            KEY_KP_0            = 0xFFB0,  // 小键盘0
+            KEY_KP_1            = 0xFFB1,  // 小键盘1
+            KEY_KP_2            = 0xFFB2,  // 小键盘2
+            KEY_KP_3            = 0xFFB3,  // 小键盘3
+            KEY_KP_4            = 0xFFB4,  // 小键盘4
+            KEY_KP_5            = 0xFFB5,  // 小键盘5
+            KEY_KP_6            = 0xFFB6,  // 小键盘6
+            KEY_KP_7            = 0xFFB7,  // 小键盘7
+            KEY_KP_8            = 0xFFB8,  // 小键盘8
+            KEY_KP_9            = 0xFFB9,  // 小键盘9
+
+            // 功能键F1-F35
+            KEY_F1              = 0xFFBE,  // F1键
+            KEY_F2              = 0xFFBF,  // F2键
+            KEY_F3              = 0xFFC0,  // F3键
+            KEY_F4              = 0xFFC1,  // F4键
+            KEY_F5              = 0xFFC2,  // F5键
+            KEY_F6              = 0xFFC3,  // F6键
+            KEY_F7              = 0xFFC4,  // F7键
+            KEY_F8              = 0xFFC5,  // F8键
+            KEY_F9              = 0xFFC6,  // F9键
+            KEY_F10             = 0xFFC7,  // F10键
+            KEY_F11             = 0xFFC8,  // F11键
+            KEY_F12             = 0xFFC9,  // F12键
+            KEY_F13             = 0xFFCA,  // F13键
+            KEY_F14             = 0xFFCB,  // F14键
+            KEY_F15             = 0xFFCC,  // F15键
+            KEY_F16             = 0xFFCD,  // F16键
+            KEY_F17             = 0xFFCE,  // F17键
+            KEY_F18             = 0xFFCF,  // F18键
+            KEY_F19             = 0xFFD0,  // F19键
+            KEY_F20             = 0xFFD1,  // F20键
+            KEY_F21             = 0xFFD2,  // F21键
+            KEY_F22             = 0xFFD3,  // F22键
+            KEY_F23             = 0xFFD4,  // F23键
+            KEY_F24             = 0xFFD5,  // F24键
+            KEY_F25             = 0xFFD6,  // F25键
+            KEY_F26             = 0xFFD7,  // F26键
+            KEY_F27             = 0xFFD8,  // F27键
+            KEY_F28             = 0xFFD9,  // F28键
+            KEY_F29             = 0xFFDA,  // F29键
+            KEY_F30             = 0xFFDB,  // F30键
+            KEY_F31             = 0xFFDC,  // F31键
+            KEY_F32             = 0xFFDD,  // F32键
+            KEY_F33             = 0xFFDE,  // F33键
+            KEY_F34             = 0xFFDF,  // F34键
+            KEY_F35             = 0xFFE0,  // F35键
+
+            // 修饰键
+            KEY_Shift_L         = 0xFFE1,  // 左Shift键
+            KEY_Shift_R         = 0xFFE2,  // 右Shift键
+            KEY_Control_L       = 0xFFE3,  // 左Ctrl键
+            KEY_Control_R       = 0xFFE4,  // 右Ctrl键
+            KEY_Caps_Lock       = 0xFFE5,  // 大写锁定
+            KEY_Shift_Lock      = 0xFFE6,  // Shift锁定
+
+            KEY_Meta_L          = 0xFFE7,  // 左Meta键
+            KEY_Meta_R          = 0xFFE8,  // 右Meta键
+            KEY_Alt_L           = 0xFFE9,  // 左Alt键
+            KEY_Alt_R           = 0xFFEA,  // 右Alt键
+            KEY_Super_L         = 0xFFEB,  // 左Super键
+            KEY_Super_R         = 0xFFEC,  // 右Super键
+            KEY_Hyper_L         = 0xFFED,  // 左Hyper键
+            KEY_Hyper_R         = 0xFFEE   // 右Hyper键
+        };
+
+        /** 修饰键掩码枚举 */
+        enum ModKeyMask
+        {
+            MODKEY_LEFT_SHIFT  = 0x0001,   // 左Shift键
+            MODKEY_RIGHT_SHIFT = 0x0002,   // 右Shift键
+            MODKEY_LEFT_CTRL   = 0x0004,   // 左Ctrl键
+            MODKEY_RIGHT_CTRL  = 0x0008,   // 右Ctrl键
+            MODKEY_LEFT_ALT    = 0x0010,   // 左Alt键
+            MODKEY_RIGHT_ALT   = 0x0020,   // 右Alt键
+            MODKEY_LEFT_META   = 0x0040,   // 左Meta键
+            MODKEY_RIGHT_META  = 0x0080,   // 右Meta键
+            MODKEY_LEFT_SUPER  = 0x0100,   // 左Super键
+            MODKEY_RIGHT_SUPER = 0x0200,   // 右Super键
+            MODKEY_LEFT_HYPER  = 0x0400,   // 左Hyper键
+            MODKEY_RIGHT_HYPER = 0x0800,   // 右Hyper键
+            MODKEY_NUM_LOCK    = 0x1000,   // 数字锁定
+            MODKEY_CAPS_LOCK   = 0x2000,   // 大写锁定
+            MODKEY_CTRL        = (MODKEY_LEFT_CTRL|MODKEY_RIGHT_CTRL),      // 任意Ctrl键
+            MODKEY_SHIFT       = (MODKEY_LEFT_SHIFT|MODKEY_RIGHT_SHIFT),    // 任意Shift键
+            MODKEY_ALT         = (MODKEY_LEFT_ALT|MODKEY_RIGHT_ALT),        // 任意Alt键
+            MODKEY_META        = (MODKEY_LEFT_META|MODKEY_RIGHT_META),      // 任意Meta键
+            MODKEY_SUPER       = (MODKEY_LEFT_SUPER|MODKEY_RIGHT_SUPER),    // 任意Super键
+            MODKEY_HYPER       = (MODKEY_LEFT_HYPER|MODKEY_RIGHT_HYPER)     // 任意Hyper键
+        };
+
+        /** 鼠标Y轴方向枚举 */
+        enum MouseYOrientation
+        {
+            Y_INCREASING_UPWARDS,    // Y轴向上递增（OpenGL标准）
+            Y_INCREASING_DOWNWARDS   // Y轴向下递增（屏幕坐标标准）
+        };
+
+        /** 滚动运动枚举 */
+        enum ScrollingMotion
+        {
+            SCROLL_NONE,     // 无滚动
+            SCROLL_LEFT,     // 向左滚动
+            SCROLL_RIGHT,    // 向右滚动
+            SCROLL_UP,       // 向上滚动
+            SCROLL_DOWN,     // 向下滚动
+            SCROLL_2D        // 2D滚动
+        };
+
+        /** 平板指针类型枚举 */
+        enum TabletPointerType
+        {
+            UNKNOWN = 0,     // 未知类型
+            PEN,             // 笔
+            PUCK,            // 游标
+            ERASER           // 橡皮擦
+        };
+
+        /** 触摸阶段枚举 */
+        enum TouchPhase
+        {
+            TOUCH_UNKNOWN,   // 未知阶段
+            TOUCH_BEGAN,     // 触摸开始
+            TOUCH_MOVED,     // 触摸移动
+            TOUCH_STATIONERY, // 触摸静止
+            TOUCH_ENDED      // 触摸结束
+        };
+
+        /** 触摸数据类，用于存储多点触摸信息 */
+        class TouchData : public osg::Object {
+        public:
+
+            /** 触摸点结构 */
+            struct TouchPoint {
+                unsigned int id;        // 触摸点ID
+                TouchPhase phase;       // 触摸阶段
+                float x, y;             // 触摸坐标
+                unsigned int tapCount;  // 点击次数
+
+                TouchPoint() : id(0), phase(TOUCH_UNKNOWN), x(0.0f), y(0.0f), tapCount(0) {}
+                TouchPoint(unsigned int in_id, TouchPhase in_phase, float in_x, float in_y, unsigned int in_tap_count)
+                :    id(in_id),
+                    phase(in_phase),
+                    x(in_x),
+                    y(in_y),
+                    tapCount(in_tap_count)
+                {
+                }
+            };
+
+            typedef std::vector<TouchPoint> TouchSet;  // 触摸点集合类型
+
+            typedef TouchSet::iterator iterator;
+            typedef TouchSet::const_iterator const_iterator;
+
+            TouchData() : osg::Object() {}
+
+            TouchData(const TouchData& td, const osg::CopyOp& copyop):
+                osg::Object(td,copyop),
+                _touches(td._touches) {}
+
+            META_Object(osgGA, TouchData);
+
+            /** 获取触摸点数量 */
+            unsigned int getNumTouchPoints() const { return static_cast<unsigned int>(_touches.size()); }
+
+            iterator begin() { return _touches.begin(); }
+            const_iterator begin() const { return _touches.begin(); }
+
+            iterator end() { return _touches.end(); }
+            const_iterator end() const { return _touches.end(); }
+
+            /** 获取指定索引的触摸点 */
+            const TouchPoint get(unsigned int i) const { return _touches[i]; }
+
+        protected:
+
+            virtual ~TouchData() {}
+
+            /** 添加触摸点 */
+            void addTouchPoint(unsigned int id, TouchPhase phase, float x, float y, unsigned int tap_count) {
+                _touches.push_back(TouchPoint(id, phase, x, y, tap_count));
+            }
+
+            TouchSet _touches;  // 触摸点集合
+
+        friend class GUIEventAdapter;
+        };
+
+    public:
+
+        /** 构造函数 */
+        GUIEventAdapter();
+
+        /** 拷贝构造函数 */
+        GUIEventAdapter(const GUIEventAdapter& rhs, const osg::CopyOp& copyop=osg::CopyOp::SHALLOW_COPY);
+
+        META_Object(osgGA, GUIEventAdapter);
+
+        /** 类型转换函数 */
+        virtual GUIEventAdapter* asGUIEventAdapter() { return this; }
+        virtual const GUIEventAdapter* asGUIEventAdapter() const { return this; }
+
+        /** 获取累积事件状态单例对象
+          * 通常所有事件队列都会共享这个单一的GUIEventAdapter对象来跟踪
+          * 鼠标位置、键盘和鼠标掩码 */
+        static osg::ref_ptr<GUIEventAdapter>& getAccumulatedEventState();
+
+        /** 设置事件类型 */
+        void setEventType(EventType Type) { _eventType = Type; }
+
+        /** 获取事件类型 */
+        virtual EventType getEventType() const { return _eventType; }
+
+        /** 获取事件时间（已废弃） */
+        double time() const { return _time; }
+
+        /** 设置图形上下文 */
+        void setGraphicsContext(osg::GraphicsContext* context) { _context = context; }
+        /** 获取图形上下文 */
+        osg::GraphicsContext* getGraphicsContext() { return _context.get(); }
+        const osg::GraphicsContext* getGraphicsContext() const { return _context.get(); }
+
+        /** 设置窗口矩形 */
+        void setWindowRectangle(int x, int y, int width, int height, bool updateMouseRange = true);
+
+        /** 设置窗口X原点 */
+        void setWindowX(int v) { _windowX = v; }
+        /** 获取窗口X原点 */
+        int getWindowX() const { return _windowX; }
+
+        /** 设置窗口Y原点 */
+        void setWindowY(int v) { _windowY = v; }
+        /** 获取窗口Y原点 */
+        int getWindowY() const { return _windowY; }
+
+        /** 设置窗口宽度 */
+        void setWindowWidth(int v) { _windowWidth = v; }
+        /** 获取窗口宽度 */
+        int getWindowWidth() const { return _windowWidth; }
+
+        /** 设置窗口高度 */
+        void setWindowHeight(int v) { _windowHeight = v; }
+        /** 获取窗口高度 */
+        int getWindowHeight() const { return _windowHeight; }
+
+        /** 设置按键 */
+        inline void setKey(int key) { _key = key; }
+        /** 获取按键，如果不适用于此事件则返回-1 */
+        virtual int getKey() const { return _key; }
+
+        /** 设置未修饰的按键 */
+        void setUnmodifiedKey(int key) { _unmodifiedKey = key; }
+        /** 获取未修饰的按键 */
+        int getUnmodifiedKey() const { return _unmodifiedKey; }
+
+        /** 设置按钮 */
+        void setButton(int button) { _button = button; }
+        /** 获取按钮，如果不适用于此事件则返回-1 */
+        int getButton() const { return _button; }
+
+        /** 设置鼠标输入范围 */
+        void setInputRange(float Xmin, float Ymin, float Xmax, float Ymax);
+
+        /** 设置鼠标最小X值 */
+        void setXmin(float v) { _Xmin = v; }
+        /** 获取鼠标最小X值 */
+        float getXmin() const { return _Xmin; }
+
+        /** 设置鼠标最大X值 */
+        void setXmax(float v) { _Xmax = v; }
+        /** 获取鼠标最大X值 */
+        float getXmax() const { return _Xmax; }
+
+        /** 设置鼠标最小Y值 */
+        void setYmin(float v) { _Ymin = v; }
+        /** 获取鼠标最小Y值 */
+        float getYmin() const { return _Ymin; }
+
+        /** 设置鼠标最大Y值 */
+        void setYmax(float v) { _Ymax = v; }
+        /** 获取鼠标最大Y值 */
+        float getYmax() const { return _Ymax; }
+
+        /** 设置当前鼠标X位置 */
+        void setX(float x) { _mx = x; }
+        /** 获取当前鼠标X位置 */
+        float getX() const { return _mx; }
+
+        /** 设置当前鼠标Y位置 */
+        void setY(float y) { _my = y; }
+        /** 获取当前鼠标Y位置 */
+        float getY() const { return _my; }
+
+        /** 获取标准化的X坐标（-1到1范围） */
+        inline float getXnormalized() const
+        {
+            return _pointerDataList.size()>=1 ?
+                   _pointerDataList[_pointerDataList.size()-1]->getXnormalized():
+                   2.0f*(getX()-getXmin())/(getXmax()-getXmin())-1.0f;
+        }
+
+        /** 获取标准化的Y坐标（-1到1范围） */
+        inline float getYnormalized() const
+        {
+            if (_pointerDataList.size()>=1) return _pointerDataList[_pointerDataList.size()-1]->getYnormalized();
+            if (_mouseYOrientation==Y_INCREASING_UPWARDS) return 2.0f*(getY()-getYmin())/(getYmax()-getYmin())-1.0f;
+            else return -(2.0f*(getY()-getYmin())/(getYmax()-getYmin())-1.0f);
+        }
+#else
+        /**
+         * return the current mouse x value normalized to the range of -1 to 1.
+         * -1 would be the left hand side of the window.
+         * 0.0 would be the middle of the window.
+         * +1 would be the right hand side of the window.
+         */
+        inline float getXnormalized() const { return 2.0f*(getX()-getXmin())/(getXmax()-getXmin())-1.0f; }
+
+        /**
+         * return the current mouse y value normalized to the range of -1 to 1.
+         * -1 would be the bottom of the window.
+         * 0.0 would be the middle of the window.
+         * +1 would be the top of the window.
+         */
+        inline float getYnormalized() const
+        {
+            if (_mouseYOrientation==Y_INCREASING_UPWARDS) return 2.0f*(getY()-getYmin())/(getYmax()-getYmin())-1.0f;
+            else return -(2.0f*(getY()-getYmin())/(getYmax()-getYmin())-1.0f);
+        }
+#endif
+
+        /** 设置鼠标Y轴方向 */
+        void setMouseYOrientation(MouseYOrientation myo) { _mouseYOrientation = myo; }
+        /** 获取鼠标Y轴方向 */
+        MouseYOrientation getMouseYOrientation() const { return _mouseYOrientation; }
+        /** 设置鼠标Y轴方向并重新计算坐标 */
+        void setMouseYOrientationAndUpdateCoords(MouseYOrientation myo);
+
+        /** 设置当前鼠标按钮状态 */
+        void setButtonMask(int mask) { _buttonMask = mask; }
+        /** 获取当前鼠标按钮状态 */
+        int getButtonMask() const { return _buttonMask; }
+
+        /** 设置修饰键掩码 */
+        void setModKeyMask(int mask) { _modKeyMask = mask; }
+        /** 获取修饰键掩码 */
+        int getModKeyMask() const { return _modKeyMask; }
+
+        /** 设置滚动运动 */
+        void setScrollingMotion(ScrollingMotion motion) { _scrolling.motion = motion; }
+        /** 获取滚动运动 */
+        ScrollingMotion getScrollingMotion() const { return _scrolling.motion; }
+
+        /** 设置滚动运动增量并设置为2D滚动 */
+        void setScrollingMotionDelta(float x, float y) {
+            _scrolling.motion = SCROLL_2D;
+            _scrolling.deltaX = x;
+            _scrolling.deltaY = y;
+        }
+
+        /** 设置滚动X增量 */
+        void setScrollingDeltaX(float v) { _scrolling.deltaX = v; }
+        /** 获取滚动X增量 */
+        float getScrollingDeltaX() const { return _scrolling.deltaX; }
+
+        /** 设置滚动Y增量 */
+        void setScrollingDeltaY(float v) { _scrolling.deltaY = v; }
+        /** 获取滚动Y增量 */
+        float getScrollingDeltaY() const { return _scrolling.deltaY; }
+
+        /** 设置平板笔压力（0-1范围） */
+        void setPenPressure(float pressure) { _tabletPen.pressure = pressure; }
+        /** 获取平板笔压力 */
+        float getPenPressure()  const { return _tabletPen.pressure; }
+
+        /** 设置平板笔X轴倾斜角度 */
+        void setPenTiltX(float tiltX) { _tabletPen.tiltX = tiltX; }
+        /** 获取平板笔X轴倾斜角度 */
+        float getPenTiltX()  const { return _tabletPen.tiltX; }
+
+        /** 设置平板笔Y轴倾斜角度 */
+        void setPenTiltY(float tiltY) { _tabletPen.tiltY = tiltY; }
+        /** 获取平板笔Y轴倾斜角度 */
+        float getPenTiltY()  const { return _tabletPen.tiltY; }
+
+        /** 设置平板笔Z轴旋转角度 */
+        void setPenRotation(float rotation) { _tabletPen.rotation = rotation; }
+        /** 获取平板笔Z轴旋转角度 */
+        float getPenRotation()  const { return _tabletPen.rotation; }
+
+        /** 设置平板指针类型 */
+        void setTabletPointerType(TabletPointerType pt) { _tabletPen.tabletPointerType = pt; }
+        /** 获取平板指针类型 */
+        TabletPointerType getTabletPointerType() const { return _tabletPen.tabletPointerType; }
+
+        /** 获取平板输入设备的方向矩阵 */
+        const osg::Matrix getPenOrientation() const;
+
+        /** 添加触摸点 */
+        void addTouchPoint(unsigned int id, TouchPhase phase, float x, float y, unsigned int tapCount = 0);
+
+        /** 设置触摸数据 */
+        void setTouchData(TouchData* td) { _touchData = td; }
+        /** 获取触摸数据 */
+        TouchData* getTouchData() const { return _touchData.get(); }
+        /** 判断是否为多点触摸事件 */
+        bool isMultiTouchEvent() const { return (_touchData.valid()); }
+
+        /** 获取触摸点标准化X坐标 */
+        inline float getTouchPointNormalizedX(unsigned int ndx) const {
+            return (getTouchData()->get(ndx).x-_Xmin)/(_Xmax-_Xmin)*2.0f-1.0f;
+        }
+
+        /** 获取触摸点标准化Y坐标 */
+        inline float getTouchPointNormalizedY(unsigned int ndx) const {
+            if (_mouseYOrientation==Y_INCREASING_UPWARDS)
+                return (getTouchData()->get(ndx).y-_Ymin)/(_Ymax-_Ymin)*2.0f-1.0f;
+            else
+                return -((getTouchData()->get(ndx).y-_Ymin)/(_Ymax-_Ymin)*2.0f-1.0f);
+        }
+
+        /** 指针数据列表类型 */
+        typedef std::vector< osg::ref_ptr<PointerData> > PointerDataList;
+        /** 设置指针数据列表 */
+        void setPointerDataList(const PointerDataList& pdl) { _pointerDataList = pdl; }
+        /** 获取指针数据列表 */
+        PointerDataList& getPointerDataList() { return _pointerDataList; }
+        const PointerDataList& getPointerDataList() const { return _pointerDataList; }
+
+        /** 获取指针数据数量 */
+        unsigned int getNumPointerData() const { return static_cast<unsigned int>(_pointerDataList.size()); }
+        /** 获取指定索引的指针数据 */
+        PointerData* getPointerData(unsigned int i) { return _pointerDataList[i].get(); }
+        const PointerData* getPointerData(unsigned int i) const { return _pointerDataList[i].get(); }
+
+        /** 根据对象获取指针数据 */
+        PointerData* getPointerData(osg::Object* obj) { for(unsigned int i=0;i<_pointerDataList.size(); ++i) { if (_pointerDataList[i]->object==obj) return _pointerDataList[i].get(); } return 0; }
+        const PointerData* getPointerData(osg::Object* obj) const { for(unsigned int i=0;i<_pointerDataList.size(); ++i) { if (_pointerDataList[i]->object==obj) return _pointerDataList[i].get(); } return 0; }
+        /** 添加指针数据 */
+        void addPointerData(PointerData* pd) { _pointerDataList.push_back(pd); }
+
+        /** 从源事件复制指针数据 */
+        void copyPointerDataFrom(const osgGA::GUIEventAdapter& sourceEvent);
+
+    protected:
+
+        /** 析构函数 - 强制用户在堆上创建，以确保多引用安全 */
+        virtual ~GUIEventAdapter();
+
+        EventType _eventType;  // 事件类型
+
+        osg::observer_ptr<osg::GraphicsContext> _context;  // 图形上下文
+        int _windowX;          // 窗口X坐标
+        int _windowY;          // 窗口Y坐标
+        int _windowWidth;      // 窗口宽度
+        int _windowHeight;     // 窗口高度
+        int _key;              // 按键
+        int _unmodifiedKey;    // 未修饰的按键
+        int _button;           // 按钮
+        float _Xmin,_Xmax;     // X轴范围
+        float _Ymin,_Ymax;     // Y轴范围
+        float _mx;             // 鼠标X位置
+        float _my;             // 鼠标Y位置
+        int _buttonMask;       // 按钮掩码
+        int _modKeyMask;       // 修饰键掩码
+        MouseYOrientation _mouseYOrientation;  // 鼠标Y轴方向
+
+        /** 滚动数据结构 */
+        struct Scrolling {
+            ScrollingMotion motion;  // 滚动运动类型
+            float deltaX;            // X轴增量
+            float deltaY;            // Y轴增量
+
+            Scrolling() : motion(SCROLL_NONE), deltaX(0), deltaY(0) {}
+            Scrolling(const Scrolling& rhs) : motion(rhs.motion), deltaX(rhs.deltaX), deltaY(rhs.deltaY) {}
+        };
+        Scrolling _scrolling;  // 滚动数据
+
+        /** 平板笔数据结构 */
+        struct TabletPen {
+            float pressure;           // 压力值
+            float tiltX;              // X轴倾斜
+            float tiltY;              // Y轴倾斜
+            float rotation;           // 旋转角度
+            TabletPointerType tabletPointerType;  // 指针类型
+
+            TabletPen() : pressure(0), tiltX(0), tiltY(0), rotation(0), tabletPointerType(UNKNOWN) {}
+            TabletPen(const TabletPen& rhs) : pressure(rhs.pressure), tiltX(rhs.tiltX), tiltY(rhs.tiltY), rotation(rhs.rotation), tabletPointerType(rhs.tabletPointerType) {}
+        };
+        TabletPen _tabletPen;  // 平板笔数据
+
+        osg::ref_ptr<TouchData> _touchData;  // 触摸数据
+
+        PointerDataList _pointerDataList;  // 指针数据列表
+};
+
+}
+
+#endif
