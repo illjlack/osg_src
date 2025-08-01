@@ -115,40 +115,49 @@ OutputIterator* writeOutputIterator( std::ostream& fout, const Options* options 
     }
 }
 
+// ReaderWriterOSG2类：OSG新版本序列化格式的读写器
+// 支持多种格式：osg2(通用), osgt(ASCII文本), osgb(二进制), osgx(XML)
 class ReaderWriterOSG2 : public osgDB::ReaderWriter
 {
 public:
     ReaderWriterOSG2()
     {
+        // 注册支持的文件扩展名和格式描述
         supportsExtension( "osg2", "OpenSceneGraph extendable format" );
-        supportsExtension( "osgt", "OpenSceneGraph extendable ascii format" );
-        supportsExtension( "osgb", "OpenSceneGraph extendable binary format" );
-        supportsExtension( "osgx", "OpenSceneGraph extendable XML format" );
+        supportsExtension( "osgt", "OpenSceneGraph extendable ascii format" );    // ASCII文本格式
+        supportsExtension( "osgb", "OpenSceneGraph extendable binary format" );   // 二进制格式（最高效）
+        supportsExtension( "osgx", "OpenSceneGraph extendable XML format" );      // XML格式（可读性好）
 
+        // 支持的导入/导出选项
         supportsOption( "Ascii", "Import/Export option: Force reading/writing ascii file" );
         supportsOption( "XML", "Import/Export option: Force reading/writing XML file" );
         supportsOption( "ForceReadingImage", "Import option: Load an empty image instead if required file missed" );
         supportsOption( "SchemaData", "Export option: Record inbuilt schema data into a binary file" );
         supportsOption( "SchemaFile=<file>", "Import/Export option: Use/Record an ascii schema file" );
-        supportsOption( "Compressor=<name>", "Export option: Use an inbuilt or user-defined compressor" );
+        supportsOption( "Compressor=<n>", "Export option: Use an inbuilt or user-defined compressor" );
         supportsOption( "WriteImageHint=<hint>", "Export option: Hint of writing image to stream: "
                         "<IncludeData> writes Image::data() directly; "
                         "<IncludeFile> writes the image file itself to stream; "
-                        "<UseExternal> writes only the filename; "
-                        "<WriteOut> writes Image::data() to disk as external file." );
+                        "<UseExternal> writes only the filename; " );
     }
 
     virtual const char* className() const { return "OpenSceneGraph Native Format Reader/Writer"; }
 
 
+    // 准备读取操作：根据文件扩展名设置相应的读取模式和选项
     Options* prepareReading( ReadResult& result, std::string& fileName, std::ios::openmode& mode, const Options* options ) const
     {
+        // 获取文件扩展名（转为小写）
         std::string ext = osgDB::getLowerCaseFileExtension( fileName );
+        
+        // 检查是否支持该扩展名
         if ( !acceptsExtension(ext) )
         {
             result = ReadResult::FILE_NOT_HANDLED;
             return 0;
         }
+        
+        // 查找文件的完整路径
         fileName = osgDB::findDataFile( fileName, options );
         if ( fileName.empty() )
         {
@@ -156,17 +165,30 @@ public:
             return 0;
         }
 
+        // 创建本地选项副本，设置数据库路径
         osg::ref_ptr<Options> local_opt = options ? static_cast<Options*>(options->clone(osg::CopyOp::SHALLOW_COPY)) : new Options;
         local_opt->getDatabasePathList().push_front(osgDB::getFilePath(fileName));
-        if ( ext=="osgt" ) local_opt->setPluginStringData( "fileType", "Ascii" );
-        else if ( ext=="osgx" ) local_opt->setPluginStringData( "fileType", "XML" );
+        
+        // 根据文件扩展名设置文件类型和打开模式
+        if ( ext=="osgt" ) 
+        {
+            // ASCII文本格式：人类可读，调试友好，但文件较大
+            local_opt->setPluginStringData( "fileType", "Ascii" );
+        }
+        else if ( ext=="osgx" ) 
+        {
+            // XML格式：结构化文本，可读性好，支持验证
+            local_opt->setPluginStringData( "fileType", "XML" );
+        }
         else  if ( ext=="osgb" )
         {
+            // OSGB二进制格式：最紧凑，加载最快，但不可直接编辑
             local_opt->setPluginStringData( "fileType", "Binary" );
-            mode |= std::ios::binary;
+            mode |= std::ios::binary;  // 重要：必须以二进制模式打开文件
         }
         else
         {
+            // 默认情况：使用二进制模式
             local_opt->setPluginStringData( "fileType", std::string() );
             mode |= std::ios::binary;
         }
@@ -174,86 +196,115 @@ public:
         return local_opt.release();
     }
 
+    // 从文件读取对象：统一的对象读取接口
     virtual ReadResult readObject( const std::string& file, const Options* options ) const
     {
         ReadResult result = ReadResult::FILE_LOADED;
         std::string fileName = file;
         std::ios::openmode mode = std::ios::in;
+        
+        // 准备读取设置
         Options* local_opt = prepareReading( result, fileName, mode, options );
         if ( !result.success() ) return result;
 
+        // 打开文件流并读取
         osgDB::ifstream istream( fileName.c_str(), mode );
         return readObject( istream, local_opt );
     }
 
+    // 从输入流读取对象：核心的对象反序列化逻辑
     virtual ReadResult readObject( std::istream& fin, const Options* options ) const
     {
+        // 创建输入迭代器：根据文件类型选择相应的解析器
         osg::ref_ptr<InputIterator> ii = readInputIterator(fin, options);
         if ( !ii ) return ReadResult::FILE_NOT_HANDLED;
 
+        // 创建输入流对象：负责实际的反序列化工作
         InputStream is( options );
 
+        // 启动反序列化过程：识别文件内容类型
         osgDB::InputStream::ReadType readType = is.start(ii.get());
         if ( readType==InputStream::READ_UNKNOWN )
         {
-            CATCH_EXCEPTION(is);
+            CATCH_EXCEPTION(is);  // 捕获并处理异常
             return ReadResult::FILE_NOT_HANDLED;
         }
+        
+        // 解压缩数据（如果文件被压缩）
         is.decompress(); CATCH_EXCEPTION(is);
 
+        // 读取并返回对象
         osg::ref_ptr<osg::Object> obj = is.readObject(); CATCH_EXCEPTION(is);
         return obj;
     }
 
+    // 从文件读取图像：图像特化的读取接口
     virtual ReadResult readImage( const std::string& file, const Options* options ) const
     {
         ReadResult result = ReadResult::FILE_LOADED;
         std::string fileName = file;
         std::ios::openmode mode = std::ios::in;
+        
+        // 准备读取设置
         Options* local_opt = prepareReading( result, fileName, mode, options );
         if ( !result.success() ) return result;
 
+        // 打开文件流并读取图像
         osgDB::ifstream istream( fileName.c_str(), mode );
         return readImage( istream, local_opt );
     }
 
+    // 从输入流读取图像：核心的图像反序列化逻辑
     virtual ReadResult readImage( std::istream& fin, const Options* options ) const
     {
+        // 创建输入迭代器
         osg::ref_ptr<InputIterator> ii = readInputIterator(fin, options);
         if ( !ii ) return ReadResult::FILE_NOT_HANDLED;
 
-
+        // 创建输入流对象
         InputStream is( options );
+        
+        // 验证文件内容类型必须是图像
         if ( is.start(ii.get())!=InputStream::READ_IMAGE )
         {
             CATCH_EXCEPTION(is);
             return ReadResult::FILE_NOT_HANDLED;
         }
 
+        // 解压并读取图像数据
         is.decompress(); CATCH_EXCEPTION(is);
         osg::ref_ptr<osg::Image> image = is.readImage(); CATCH_EXCEPTION(is);
 
         return image;
     }
 
+    // 从文件读取节点：节点特化的读取接口，PagedLOD经常使用此接口
     virtual ReadResult readNode( const std::string& file, const Options* options ) const
     {
         ReadResult result = ReadResult::FILE_LOADED;
         std::string fileName = file;
         std::ios::openmode mode = std::ios::in;
+        
+        // 准备读取设置
         Options* local_opt = prepareReading( result, fileName, mode, options );
         if ( !result.success() ) return result;
 
+        // 打开文件流并读取节点
         osgDB::ifstream istream( fileName.c_str(), mode );
         return readNode( istream, local_opt );
     }
 
+    // 从输入流读取节点：核心的节点反序列化逻辑
     virtual ReadResult readNode( std::istream& fin, const Options* options ) const
     {
+        // 创建输入迭代器
         osg::ref_ptr<InputIterator> ii = readInputIterator(fin, options);
         if ( !ii ) return ReadResult::FILE_NOT_HANDLED;
 
+        // 创建输入流对象
         InputStream is( options );
+        
+        // 启动反序列化：验证内容类型为场景或对象
         osgDB::InputStream::ReadType readType = is.start(ii.get());
         if ( readType!=InputStream::READ_SCENE && readType!=InputStream::READ_OBJECT )
         {
@@ -261,28 +312,42 @@ public:
             return ReadResult::FILE_NOT_HANDLED;
         }
 
+        // 解压并读取节点数据
         is.decompress(); CATCH_EXCEPTION(is);
         osg::ref_ptr<osg::Node> node = is.readObjectOfType<osg::Node>(); CATCH_EXCEPTION(is);
         if ( !node ) return ReadResult::FILE_NOT_HANDLED;
         return node;
     }
 
+    // 准备写入操作：根据文件扩展名设置相应的写入模式
     Options* prepareWriting( WriteResult& result, const std::string& fileName, std::ios::openmode& mode, const Options* options ) const
     {
+        // 获取文件扩展名
         std::string ext = osgDB::getLowerCaseFileExtension( fileName );
         if ( !acceptsExtension(ext) ) result = WriteResult::FILE_NOT_HANDLED;
 
+        // 创建本地选项副本
         osg::ref_ptr<Options> local_opt = options ? static_cast<Options*>(options->clone(osg::CopyOp::SHALLOW_COPY)) : new Options;
         local_opt->getDatabasePathList().push_front(osgDB::getFilePath(fileName));
-        if ( ext=="osgt" ) local_opt->setPluginStringData( "fileType", "Ascii" );
-        else if ( ext=="osgx" ) local_opt->setPluginStringData( "fileType", "XML" );
+        
+        // 根据扩展名设置写入格式
+        if ( ext=="osgt" ) 
+        {
+            local_opt->setPluginStringData( "fileType", "Ascii" );
+        }
+        else if ( ext=="osgx" ) 
+        {
+            local_opt->setPluginStringData( "fileType", "XML" );
+        }
         else  if ( ext=="osgb" )
         {
+            // OSGB二进制写入：高效的数据序列化
             local_opt->setPluginStringData( "fileType", "Binary" );
-            mode |= std::ios::binary;
+            mode |= std::ios::binary;  // 必须以二进制模式写入
         }
         else
         {
+            // 默认二进制模式
             local_opt->setPluginStringData( "fileType", std::string() );
             mode |= std::ios::binary;
         }
